@@ -1005,7 +1005,7 @@ uint32_t wasmjit_emscripten____syscall4(uint32_t which, uint32_t varargs, struct
 #define EM_FIONBIO 0x5421
 #define EM_FIOASYNC 0x5452
 
-static int convert_ioctl_request(uint32_t request) {
+static long convert_ioctl_request(uint32_t request) {
 	switch (request) {
 	case EM_FIONBIO: return FIONBIO;
 	case EM_FIOASYNC: return FIOASYNC;
@@ -1017,9 +1017,8 @@ static int convert_ioctl_request(uint32_t request) {
 uint32_t wasmjit_emscripten____syscall54(uint32_t which, uint32_t varargs, struct FuncInst *funcinst)
 {
 	char *base;
-	int sys_request;
 	wasmjit_signal_block_ctx set;
-	long rret;
+	long sys_request, rret;
 
 	LOAD_ARGS(funcinst, varargs, 2,
 		  int32_t, fd,
