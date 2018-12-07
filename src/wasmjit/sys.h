@@ -231,7 +231,7 @@ typedef int sig_atomic_t;
 #include <pwd.h>
 
 typedef sigjmp_buf wasmjit_thread_state;
-#define wasmjit_save_thread_state(s) sigsetjmp((s), 1)
+#define wasmjit_save_thread_state(s) sigsetjmp((s), 0)
 #define wasmjit_restore_thread_state(s, d) siglongjmp((s), (d))
 
 #endif

@@ -210,6 +210,11 @@ static void free_stack(void *ptr, size_t size)
 #endif
 }
 
+int _wasmjit_high_emscripten_invoke_main(struct WasmJITHigh *self,
+					 const char *module_name,
+					 int argc, char **argv, char **envp,
+					 uint32_t flags);
+
 #define MAX_STACK (8 * 1024 * 1024)
 
 struct InvokeMainArgs {
@@ -224,12 +229,12 @@ struct InvokeMainArgs {
 static int handler(void *ctx)
 {
 	struct InvokeMainArgs *arg = ctx;
-	return wasmjit_high_emscripten_invoke_main(arg->high,
-						   arg->module_name,
-						   arg->argc,
-						   arg->argv,
-						   arg->envp,
-						   arg->flags);
+	return _wasmjit_high_emscripten_invoke_main(arg->high,
+						    arg->module_name,
+						    arg->argc,
+						    arg->argv,
+						    arg->envp,
+						    arg->flags);
 }
 
 int invoke_on_stack(void *stack, void *fptr, void *ctx);
@@ -368,9 +373,9 @@ static int kwasmjit_emscripten_invoke_main(struct kwasmjit_private *self,
 						      module_name,
 						      arg->argc, argv, envp, arg->flags);
 		} else {
-			retval = wasmjit_high_emscripten_invoke_main(&self->high,
-								     module_name,
-								     arg->argc, argv, envp, arg->flags);
+			retval = _wasmjit_high_emscripten_invoke_main(&self->high,
+								      module_name,
+								      arg->argc, argv, envp, arg->flags);
 		}
 
 		/*

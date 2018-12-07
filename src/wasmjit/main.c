@@ -424,14 +424,9 @@ static int run_emscripten_file(const char *filename,
 
 	ret = wasmjit_high_emscripten_invoke_main(&high, "asm",
 						  argc, argv, envp, 0);
-
-	if (WASMJIT_IS_TRAP_ERROR(ret)) {
-		fprintf(stderr, "TRAP: %s\n",
-			wasmjit_trap_reason_to_string(WASMJIT_DECODE_TRAP_ERROR(ret)));
-	} else if (ret < 0) {
-		msg = "failed to invoke main";
-		goto error;
-	}
+	/* NB: wasmjit_high_emscripten_invoke_main only returns in case
+	   of error */
+	assert(ret == -1);
 
 	if (0) {
 		char error_buffer[256];

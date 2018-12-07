@@ -275,10 +275,10 @@ int wasmjit_high_instantiate_emscripten_runtime(struct WasmJITHigh *self,
 	return ret;
 }
 
-int wasmjit_high_emscripten_invoke_main(struct WasmJITHigh *self,
-					const char *module_name,
-					int argc, char **argv, char **envp,
-					uint32_t flags)
+int _wasmjit_high_emscripten_invoke_main(struct WasmJITHigh *self,
+					 const char *module_name,
+					 int argc, char **argv, char **envp,
+					 uint32_t flags)
 {
 	size_t i;
 	struct ModuleInst *env_module_inst;
@@ -344,6 +344,45 @@ int wasmjit_high_emscripten_invoke_main(struct WasmJITHigh *self,
  error:
 	return ret;
 }
+
+#ifndef __KERNEL__
+
+int wasmjit_high_emscripten_invoke_main(struct WasmJITHigh *self,
+					const char *module_name,
+					int argc, char **argv, char **envp,
+					uint32_t flags)
+{
+	int ret;
+
+	ret = _wasmjit_high_emscripten_invoke_main(self, module_name,
+						   argc, argv, envp, flags);
+	if (ret < 0)
+		return ret;
+
+	if (WASMJIT_IS_TRAP_ERROR(ret)) {
+		/* This was a trap, and this trap could have happened during
+		   a signal, so we can only call async-signal-safe functions */
+
+		if (WASMJIT_DECODE_TRAP_ERROR(ret) == WASMJIT_TRAP_EXIT) {
+			ret &= 0xff;
+		} else {
+			int trap_error = WASMJIT_DECODE_TRAP_ERROR(ret);
+			const char *trap_reason = wasmjit_trap_reason_to_string(trap_error);
+			size_t trap_reason_len;
+
+			for (trap_reason_len = 0; trap_reason[trap_reason_len]; ++trap_reason_len);
+
+			write(2, "TRAP: ", 6);
+			write(2, trap_reason, trap_reason_len);
+			write(2, "\n", 1);
+			ret = 0x7f + trap_error;
+		}
+	}
+
+	_exit(ret);
+}
+
+#endif
 
 void wasmjit_high_close(struct WasmJITHigh *self)
 {

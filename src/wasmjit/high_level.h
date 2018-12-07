@@ -61,6 +61,9 @@ int wasmjit_high_instantiate_emscripten_runtime(struct WasmJITHigh *self,
 						size_t tablemin,
 						size_t tablemax,
 						uint32_t flags);
+
+/* NB: this only returns if a recoverable error happened, otherwise
+   it doesn't return */
 int wasmjit_high_emscripten_invoke_main(struct WasmJITHigh *self,
 					const char *module_name,
 					int argc, char **argv, char **envp,
