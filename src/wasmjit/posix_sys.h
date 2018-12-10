@@ -38,6 +38,7 @@
 #include <linux/statfs.h>
 #include <linux/fadvise.h>
 #include <linux/binfmts.h>
+#include <linux/termios.h>
 
 typedef int socklen_t;
 typedef struct user_msghdr user_msghdr_t;
