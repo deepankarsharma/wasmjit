@@ -2124,23 +2124,24 @@ static int wasmjit_compile_instruction(const struct FuncType *func_types,
 
  		assert(peek_stack(sstack) == STACK_F64);
 
-		/* movsd (%rsp), %xmm0 */
-		OUTS("\xf2\x0f\x10\x04\x24");
 		/* add $8, %rsp */
 		OUTS("\x48\x83\xc4\x08");
 
+		/* movsd (%rsp), %xmm0 */
+		OUTS("\xf2\x0f\x10\x04\x24");
+
 		switch (instruction->opcode) {
 		case OPCODE_F64_ADD:
-			/* addsd (%rsp), %xmm0 */
-			OUTS("\xf2\x0f\x58\x04\x24");
+			/* addsd -8(%rsp), %xmm0 */
+			OUTS("\xf2\x0f\x58\x44\x24\xf8");
 			break;
 		case OPCODE_F64_SUB:
-			/* subsd (%rsp), %xmm0 */
-			OUTS("\xf2\x0f\x5c\x04\x24");
+			/* subsd -8(%rsp), %xmm0 */
+			OUTS("\xf2\x0f\x5c\x44\x24\xf8");
 			break;
 		case OPCODE_F64_MUL:
-			/* mulsd (%rsp), %xmm0 */
-			OUTS("\xf2\x0f\x59\x04\x24");
+			/* mulsd -8(%rsp), %xmm0 */
+			OUTS("\xf2\x0f\x59\x44\x24\xf8");
 			break;
 		default:
 			assert(0);
