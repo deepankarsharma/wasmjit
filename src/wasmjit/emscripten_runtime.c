@@ -107,6 +107,13 @@ static int32_t int32_t_swap_bytes(int32_t a)
 #define ISUNSIGNED(a) (((a) - (a)) - 1 > 0)
 #endif
 
+#define BINPOW(n) (1ULL << (n))
+
+#define UINT_MAX_N(n) (BINPOW((n) * 8) - 1)
+/* NB: assumes two's complement */
+#define SINT_MIN_N(n) ((long long) (0 - BINPOW((n) * 8 - 1)))
+#define SINT_MAX_N(n) ((long long) (BINPOW((n) * 8 - 1) - 1))
+
 #define OVERFLOWSN(a, n) (						\
 	sizeof(a) > n &&						\
 	(ISUNSIGNED(a)							\
@@ -1010,14 +1017,25 @@ uint32_t wasmjit_emscripten____syscall4(uint32_t which, uint32_t varargs, struct
 
 #define EM_FIONBIO 0x5421
 #define EM_FIOASYNC 0x5452
+#define EM_TIOCGWINSZ 0x5413
 
 static long convert_ioctl_request(uint32_t request) {
 	switch (request) {
 	case EM_FIONBIO: return FIONBIO;
 	case EM_FIOASYNC: return FIOASYNC;
+	case EM_TIOCGWINSZ: return TIOCGWINSZ;
 	default: return -1;
 	}
 }
+
+typedef uint16_t em_unsigned_short;
+
+struct em_winsize {
+	em_unsigned_short ws_row;
+	em_unsigned_short ws_col;
+	em_unsigned_short ws_xpixel;
+	em_unsigned_short ws_ypixel;
+};
 
 /* ioctl */
 uint32_t wasmjit_emscripten____syscall54(uint32_t which, uint32_t varargs, struct FuncInst *funcinst)
@@ -1044,6 +1062,43 @@ uint32_t wasmjit_emscripten____syscall54(uint32_t which, uint32_t varargs, struc
 	base = wasmjit_emscripten_get_base_address(funcinst);
 
 	switch (args.request) {
+	case EM_TIOCGWINSZ: {
+		uint32_t optp;
+		struct em_winsize em_winsz;
+		struct winsize winsz;
+
+		if (_wasmjit_emscripten_copy_from_user(funcinst, &optp, varargs + 8, 4)) {
+			rret = -EFAULT;
+			goto err;
+		}
+
+		optp = int32_t_swap_bytes(optp);
+
+		if (!_wasmjit_emscripten_check_range(funcinst, optp, sizeof(em_winsz))) {
+			rret = -EFAULT;
+			goto err;
+		}
+
+		rret = sys_ioctl(args.fd, sys_request, (uintptr_t) &winsz);
+		if (rret >= 0) {
+			if (OVERFLOWSN(winsz.ws_row, sizeof(em_winsz.ws_row)) ||
+			    OVERFLOWSN(winsz.ws_col, sizeof(em_winsz.ws_col)) ||
+			    OVERFLOWSN(winsz.ws_xpixel, sizeof(em_winsz.ws_xpixel)) ||
+			    OVERFLOWSN(winsz.ws_ypixel, sizeof(em_winsz.ws_ypixel))) {
+				rret = -EOVERFLOW;
+				goto err;
+			}
+
+			em_winsz.ws_row = uint16_t_swap_bytes(winsz.ws_row);
+			em_winsz.ws_col = uint16_t_swap_bytes(winsz.ws_col);
+			em_winsz.ws_xpixel = uint16_t_swap_bytes(winsz.ws_xpixel);
+			em_winsz.ws_ypixel = uint16_t_swap_bytes(winsz.ws_ypixel);
+
+			memcpy(base + optp, &em_winsz, sizeof(em_winsz));
+		}
+
+		break;
+	}
 	case EM_FIOASYNC:
 	case EM_FIONBIO: {
 		int sys_opt;
@@ -2207,7 +2262,6 @@ typedef uint32_t em_blksize_t;
 typedef uint32_t em_blkcnt_t;
 typedef uint32_t em_ino_t;
 typedef int32_t em_time_t;
-typedef uint16_t em_unsigned_short;
 typedef uint8_t em_unsigned_char;
 typedef uint32_t em_unsigned_long;
 typedef uint32_t em_fsblkcnt_t;
@@ -2297,13 +2351,6 @@ enum {
 	OPT_TYPE_TIMEVAL,
 	OPT_TYPE_STRING,
 };
-
-#define BINPOW(n) (1ULL << (n))
-
-#define UINT_MAX_N(n) (BINPOW((n) * 8) - 1)
-/* NB: assumes two's complement */
-#define SINT_MIN_N(n) ((long long) (0 - BINPOW((n) * 8 - 1)))
-#define SINT_MAX_N(n) ((long long) (BINPOW((n) * 8 - 1) - 1))
 
 static int convert_sockopt(int32_t level,
 			   int32_t optname,
