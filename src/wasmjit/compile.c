@@ -1828,6 +1828,29 @@ static int wasmjit_compile_instruction(const struct FuncType *func_types,
 		push_stack(sstack, STACK_I32);
 		break;
 	}
+	case OPCODE_F32_GT:
+		assert(peek_stack(sstack) == STACK_F32);
+		pop_stack(sstack);
+
+		assert(peek_stack(sstack) == STACK_F32);
+		pop_stack(sstack);
+
+		/* add $8, %rsp */
+		OUTS("\x48\x83\xc4\x08");
+		/* movss  (%rsp),%xmm0 */
+		OUTS("\xf3\x0f\x10\x04\x24");
+		/* xor    %eax,%eax */
+		OUTS("\x31\xc0");
+		/* ucomiss -8(%rsp),%xmm0 */
+		OUTS("\x0f\x2e\x44\x24\xf8");
+		/* seta   %al */
+		OUTS("\x0f\x97\xc0");
+		/* mov    %rax,(%rsp) */
+		OUTS("\x48\x89\x04\x24");
+
+		push_stack(sstack, STACK_I32);
+
+		break;
 	case OPCODE_F64_EQ:
 	case OPCODE_F64_NE:
 	case OPCODE_F64_LT: {
