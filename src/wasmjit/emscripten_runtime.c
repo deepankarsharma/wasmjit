@@ -228,7 +228,7 @@ static int wasmjit_emscripten_check_range(struct MemInst *meminst,
 					  size_t extent)
 {
 	size_t ret;
-	if (!user_ptr)
+	if (extent && !user_ptr)
 		return 0;
 	if (__builtin_add_overflow(user_ptr, extent, &ret))
 		return 0;
