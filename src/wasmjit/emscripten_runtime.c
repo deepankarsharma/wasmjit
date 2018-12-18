@@ -1036,6 +1036,7 @@ uint32_t wasmjit_emscripten____syscall54(uint32_t which, uint32_t varargs, struc
 
 	sys_request = convert_ioctl_request(args.request);
 	if (sys_request < 0) {
+		wasmjit_warning("Unsupported ioctl() called: %" PRIu32, args.request);
 		rret = -EINVAL;
 		goto err;
 	}
@@ -3854,6 +3855,7 @@ uint32_t wasmjit_emscripten____syscall221(uint32_t which, uint32_t varargs,
 
 	sys_cmd = convert_fcntl_cmd(args.cmd);
 	if (sys_cmd < 0) {
+		wasmjit_warning("Unsupported fcntl() called: %" PRIu32, args.cmd);
 		return -EM_EINVAL;
 	}
 
