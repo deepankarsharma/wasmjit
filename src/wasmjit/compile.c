@@ -2134,6 +2134,25 @@ static int wasmjit_compile_instruction(const struct FuncType *func_types,
 
 		break;
 	}
+	case OPCODE_F32_DIV:
+		assert(peek_stack(sstack) == STACK_F32);
+		pop_stack(sstack);
+
+		assert(peek_stack(sstack) == STACK_F32);
+
+		/* add $8, %rsp */
+		OUTS("\x48\x83\xc4\x08");
+
+		/* movss (%rsp), %xmm0 */
+		OUTS("\xf3\x0f\x10\x04\x24");
+
+		/* divss -8(%rsp), %xmm0 */
+		OUTS("\xf3\x0f\x5e\x44\x24\xf8");
+
+		/* movss %xmm0, (%rsp) */
+		OUTS("\xf3\x0f\x11\x04\x24");
+
+		break;
 	case OPCODE_F64_NEG:
 		assert(peek_stack(sstack) == STACK_F64);
 		/* btcq   $0x3f,(%rsp)  */
