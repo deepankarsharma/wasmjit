@@ -116,6 +116,12 @@ static int32_t int32_t_swap_bytes(int32_t a)
 
 #define OVERFLOWS(a) OVERFLOWSN((a), 4)
 
+#ifdef __KERNEL__
+#define wasmjit_warning(fmt, ...) printk(KERN_NOTICE "kwasmjit (%d): " fmt "\n", current->pid, __VA_ARGS__)
+#else
+#define wasmjit_warning(fmt, ...) fprintf(stderr, "warning: wasmjit: " fmt "\n", __VA_ARGS__)
+#endif
+
 enum {
 #define ERRNO(name, value) EM_ ## name = value,
 #include <wasmjit/emscripten_runtime_sys_errno_def.h>
@@ -9099,16 +9105,16 @@ void wasmjit_emscripten_derive_memory_globals(uint32_t static_bump,
 	out->STACK_MAX = STACK_BASE + TOTAL_STACK;
 }
 
-#ifdef __KERNEL__
-
-#include <wasmjit/ktls.h>
-
 __attribute__((noreturn))
 void wasmjit_emscripten_internal_abort(const char *msg)
 {
-	printk(KERN_NOTICE "kwasmjit abort PID %d: %s", current->pid, msg);
+	wasmjit_warning("abort: %s", msg);
 	wasmjit_trap(WASMJIT_TRAP_ABORT);
 }
+
+#ifdef __KERNEL__
+
+#include <wasmjit/ktls.h>
 
 struct MemInst *wasmjit_emscripten_get_mem_inst(struct FuncInst *funcinst)
 {
@@ -9119,13 +9125,6 @@ struct MemInst *wasmjit_emscripten_get_mem_inst(struct FuncInst *funcinst)
 
 struct MemInst *wasmjit_emscripten_get_mem_inst(struct FuncInst *funcinst) {
 	return funcinst->module_inst->mems.elts[0];
-}
-
-__attribute__((noreturn))
-void wasmjit_emscripten_internal_abort(const char *msg)
-{
-	fprintf(stderr, "%s\n", msg);
-	wasmjit_trap(WASMJIT_TRAP_ABORT);
 }
 
 #endif
