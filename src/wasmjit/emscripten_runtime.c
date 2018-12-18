@@ -1075,7 +1075,7 @@ uint32_t wasmjit_emscripten____syscall54(uint32_t which, uint32_t varargs, struc
  err:
 	_wasmjit_unblock_signals(&set);
 
-	return rret;
+	return check_ret(rret);
 }
 
 /* close */
