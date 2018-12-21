@@ -29,13 +29,6 @@
 #include <stdint.h>
 #include <stdio.h>
 
-int wasmjit_unmap_code_segment(void *code, size_t code_size)
-{
-	(void)code;
-	(void)code_size;
-	return 1;
-}
-
 __attribute__((noreturn))
 void wasmjit_trap(int reason)
 {

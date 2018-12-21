@@ -68,49 +68,6 @@ union ExportPtr wasmjit_get_export(const struct ModuleInst *module_inst,
 	return ret;
 }
 
-void wasmjit_free_func_inst(struct FuncInst *funcinst)
-{
-	if (funcinst->invoker)
-		wasmjit_unmap_code_segment(funcinst->invoker,
-					   funcinst->invoker_size);
-	if (funcinst->compiled_code)
-		wasmjit_unmap_code_segment(funcinst->compiled_code,
-					   funcinst->compiled_code_size);
-	free(funcinst);
-}
-
-void wasmjit_free_module_inst(struct ModuleInst *module)
-{
-	size_t i;
-	if (module->free_private_data)
-		module->free_private_data(module->private_data);
-	free(module->types.elts);
-	for (i = module->n_imported_funcs; i < module->funcs.n_elts; ++i) {
-		wasmjit_free_func_inst(module->funcs.elts[i]);
-	}
-	free(module->funcs.elts);
-	for (i = module->n_imported_tables; i < module->tables.n_elts; ++i) {
-		free(module->tables.elts[i]->data);
-		free(module->tables.elts[i]);
-	}
-	free(module->tables.elts);
-	for (i = module->n_imported_mems; i < module->mems.n_elts; ++i) {
-		free(module->mems.elts[i]->data);
-		free(module->mems.elts[i]);
-	}
-	free(module->mems.elts);
-	for (i = module->n_imported_globals; i < module->globals.n_elts; ++i) {
-		free(module->globals.elts[i]);
-	}
-	free(module->globals.elts);
-	for (i = 0; i < module->exports.n_elts; ++i) {
-		if (module->exports.elts[i].name)
-			free(module->exports.elts[i].name);
-	}
-	free(module->exports.elts);
-	free(module);
-}
-
 int wasmjit_typecheck_func(const struct FuncType *type,
 			   const struct FuncInst *funcinst)
 {
