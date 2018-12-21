@@ -567,6 +567,42 @@ int wasmjit_emscripten_build_environment(struct FuncInst *environ_constructor)
 	return 0;
 }
 
+static int32_t _fflush(struct ModuleInst *asm_, uint32_t stream)
+{
+	union ValueUnion input, output;
+	struct FuncInst *callfuncinst;
+
+	callfuncinst = wasmjit_get_export(asm_, "_fflush",
+					  IMPORT_DESC_TYPE_FUNC).func;
+	if (!callfuncinst)
+		return -1;
+
+	/* check type of function */
+	{
+		struct FuncType functype;
+		wasmjit_valtype_t input_types[] = {VALTYPE_I32};
+		wasmjit_valtype_t return_types[] = {VALTYPE_I32};
+
+		_wasmjit_create_func_type(&functype,
+					  ARRAY_LEN(input_types), input_types,
+					  ARRAY_LEN(return_types), return_types);
+
+		if (!wasmjit_typecheck_func(&functype, callfuncinst))
+			return -1;
+	}
+
+	input.i32 = stream;
+	if (wasmjit_invoke_function(callfuncinst, &input, &output))
+		return -1;
+
+	return output.i32;
+}
+
+static void _we_at_exit(struct ModuleInst *asm_)
+{
+	_fflush(asm_, 0);
+}
+
 int wasmjit_emscripten_invoke_main(struct MemInst *meminst,
 				   struct FuncInst *stack_alloc_inst,
 				   struct FuncInst *main_inst,
@@ -640,6 +676,10 @@ int wasmjit_emscripten_invoke_main(struct MemInst *meminst,
 		}
 
 		return ret;
+	} else {
+		/* if the main function exited normally,
+		   run exit callbacks */
+		_we_at_exit(main_inst->module_inst);
 	}
 
 	return 0xff & out.i32;
@@ -6407,7 +6447,7 @@ __attribute__((noreturn))
 void wasmjit_emscripten__exit(uint32_t status,
 			      struct FuncInst *funcinst)
 {
-	(void) funcinst;
+	_we_at_exit(_wasmjit_emscripten_get_context(funcinst)->asm_);
 	wasmjit_exit(status);
 }
 
