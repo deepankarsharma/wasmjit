@@ -232,6 +232,7 @@ void *wasmjit_output_elf_relocatable(const char *module_name,
 		n_imported_mems, n_imported_globals,
 		funcs_offset, tables_offset,
 		mems_offset, globals_offset,
+		export_strings_symbol_start, exports_offset, exports_symbol,
 		types_symbol_start;
 	size_t bss_size = 0;
 	struct ModuleTypes module_types;
@@ -568,6 +569,22 @@ void *wasmjit_output_elf_relocatable(const char *module_name,
 	globals_offset = output->n_elts;
 	OUTPUT_REF_ARRAY(globals, struct GlobalInst *);
 
+	export_strings_symbol_start = symbols->n_elts;
+	for (i = 0; i < module->export_section.n_exports; ++i) {
+		ADD_DATA_SYMBOL(strlen(module->export_section.exports[i].name) + 1);
+		OUT(module->export_section.exports[i].name,
+		    strlen(module->export_section.exports[i].name) + 1);
+	}
+
+	exports_offset = output->n_elts;
+	exports_symbol = symbols->n_elts;
+	ADD_DATA_SYMBOL(module->export_section.n_exports * sizeof(struct Export));
+	for (i = 0; i < module->export_section.n_exports; ++i) {
+		struct Export exout;
+		exout.type = module->export_section.exports[i].idx_type;
+		OUT(&exout, sizeof(exout));
+	}
+
 #define OUTPUT_TYPE_ARRAY(_name, _type)					\
 	do {								\
 		size_t string_offset;					\
@@ -727,6 +744,11 @@ void *wasmjit_output_elf_relocatable(const char *module_name,
 		ADD_DATA_PTR_RELOCATION(MEMBER_OFFSET(&smi, &smi.module.globals.elts),
 					&array_symbol_start);
 
+		smi.module.exports.n_elts = module->export_section.n_exports;
+		ADD_DATA_PTR_RELOCATION_RAW(output->n_elts +
+					    MEMBER_OFFSET(&smi, &smi.module.exports.elts),
+					    exports_symbol);
+
 		smi.func_types.n_elts = n_imported_funcs;
 		ADD_DATA_PTR_RELOCATION(MEMBER_OFFSET(&smi,
 						      &smi.func_types.elts),
@@ -781,7 +803,6 @@ void *wasmjit_output_elf_relocatable(const char *module_name,
 
 		OUT(&smi, sizeof(smi));
 
-#undef MEMBER_OFFSET
 	}
 
 	/* compile codes */
@@ -1199,6 +1220,56 @@ void *wasmjit_output_elf_relocatable(const char *module_name,
 						    symidx, 0);
 		}
 	}
+
+	/* add export relocations */
+	for (i = 0; i < module->export_section.n_exports; ++i) {
+		size_t sidx;
+		struct Export exout;
+		struct ExportSectionExport *export =
+		    &module->export_section.exports[i];
+
+		ADD_DATA_PTR_RELOCATION_RAW(exports_offset +
+					    MEMBER_OFFSET(&exout, &exout.name),
+					    export_strings_symbol_start);
+
+		switch (export->idx_type) {
+		case IMPORT_DESC_TYPE_FUNC:
+			sidx = module_funcs.elts[export->idx].symidx;
+
+			ADD_DATA_PTR_RELOCATION_RAW(exports_offset +
+						    MEMBER_OFFSET(&exout, &exout.value.func),
+						    sidx);
+			break;
+		case IMPORT_DESC_TYPE_TABLE:
+			sidx = module_tables.elts[export->idx].symidx;
+
+			ADD_DATA_PTR_RELOCATION_RAW(exports_offset +
+						    MEMBER_OFFSET(&exout, &exout.value.table),
+						    sidx);
+			break;
+		case IMPORT_DESC_TYPE_MEM:
+			sidx = module_mems.elts[export->idx].symidx;
+			ADD_DATA_PTR_RELOCATION_RAW(exports_offset +
+						    MEMBER_OFFSET(&exout, &exout.value.mem),
+						    sidx);
+			break;
+		case IMPORT_DESC_TYPE_GLOBAL:
+			sidx = module_globals.elts[export->idx].symidx;
+			ADD_DATA_PTR_RELOCATION_RAW(exports_offset +
+						    MEMBER_OFFSET(&exout, &exout.value.global),
+						    sidx);
+			break;
+		default:
+			assert(0);
+			__builtin_unreachable();
+			break;
+		}
+
+		export_strings_symbol_start += 1;
+		exports_offset += sizeof(exout);
+	}
+
+#undef MEMBER_OFFSET
 
 	for (i = 0; i < module->export_section.n_exports; ++i) {
 		char buf[0x100];
