@@ -282,10 +282,6 @@ int wasmjit_high_emscripten_invoke_main(struct WasmJITHigh *self,
 {
 	size_t i;
 	struct ModuleInst *env_module_inst;
-	struct FuncInst *main_inst,
-		*stack_alloc_inst,
-		*environ_constructor;
-	struct MemInst *meminst;
 	struct ModuleInst *module_inst;
 	int ret;
 
@@ -327,45 +323,11 @@ int wasmjit_high_emscripten_invoke_main(struct WasmJITHigh *self,
 	if (!env_module_inst)
 		return -1;
 
-	main_inst = wasmjit_get_export(module_inst, "_main",
-				       IMPORT_DESC_TYPE_FUNC).func;
-	if (!main_inst)
-		return -1;
-
-	stack_alloc_inst = wasmjit_get_export(module_inst, "stackAlloc",
-					      IMPORT_DESC_TYPE_FUNC).func;
-	if (!stack_alloc_inst)
-		return -1;
-
-	meminst = wasmjit_get_export(env_module_inst, "memory",
-				     IMPORT_DESC_TYPE_MEM).mem;
-	if (!meminst)
-		return -1;
-
 	if (self->emscripten_env_module) {
 		assert(self->emscripten_env_module == env_module_inst);
 		if (!self->emscripten_asm_module) {
-			struct FuncInst
-				*errno_location_inst,
-				*malloc_inst,
-				*free_inst;
-
-			errno_location_inst = wasmjit_get_export(module_inst, "___errno_location",
-								 IMPORT_DESC_TYPE_FUNC).func;
-
-			malloc_inst = wasmjit_get_export(module_inst,
-							 "_malloc",
-							 IMPORT_DESC_TYPE_FUNC).func;
-
-			free_inst = wasmjit_get_export(module_inst,
-						       "_free",
-						       IMPORT_DESC_TYPE_FUNC).func;
-
-			if (wasmjit_emscripten_init(wasmjit_emscripten_get_context(env_module_inst),
+			if (wasmjit_emscripten_init(env_module_inst,
 						    module_inst,
-						    errno_location_inst,
-						    malloc_inst,
-						    free_inst,
 						    envp))
 				return -1;
 
@@ -378,19 +340,7 @@ int wasmjit_high_emscripten_invoke_main(struct WasmJITHigh *self,
 		}
 	}
 
-	environ_constructor = wasmjit_get_export(module_inst,
-						 "___emscripten_environ_constructor",
-						 IMPORT_DESC_TYPE_FUNC).func;
-	ret = wasmjit_emscripten_build_environment(environ_constructor);
-	if (ret) {
-		ret = -1;
-		goto error;
-	}
-
-	ret = wasmjit_emscripten_invoke_main(meminst,
-					     stack_alloc_inst,
-					     main_inst,
-					     argc, argv);
+	ret = wasmjit_emscripten_invoke_main(env_module_inst, argc, argv);
  error:
 	return ret;
 }

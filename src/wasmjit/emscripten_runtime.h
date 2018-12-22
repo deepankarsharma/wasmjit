@@ -72,11 +72,8 @@ struct EmSem {
 
 struct EmscriptenContext {
 	struct ModuleInst *asm_;
-	struct FuncInst *errno_location_inst;
 	char **environ;
 	int buildEnvironmentCalled;
-	struct FuncInst *malloc_inst;
-	struct FuncInst *free_inst;
 	DEFINE_ANON_VECTOR(struct EmFile *) fd_table;
 	/* NB: only used in kernel */
 	uint32_t gai_strerror_buffer;
@@ -167,18 +164,13 @@ void wasmjit_emscripten_internal_abort(const char *msg) __attribute__((noreturn)
 struct MemInst *wasmjit_emscripten_get_mem_inst(struct FuncInst *funcinst);
 
 
-int wasmjit_emscripten_init(struct EmscriptenContext *ctx,
+/* Must call this before invoking any function that uses the emscripten
+   runtime */
+int wasmjit_emscripten_init(struct ModuleInst *env,
 			    struct ModuleInst *asm_,
-			    struct FuncInst *errno_location_inst,
-			    struct FuncInst *malloc_inst,
-			    struct FuncInst *free_inst,
 			    char *envp[]);
 
-int wasmjit_emscripten_build_environment(struct FuncInst *environ_constructor);
-
-int wasmjit_emscripten_invoke_main(struct MemInst *meminst,
-				   struct FuncInst *stack_alloc_inst,
-				   struct FuncInst *main_inst,
+int wasmjit_emscripten_invoke_main(struct ModuleInst *env,
 				   int argc,
 				   char *argv[]);
 

@@ -250,13 +250,7 @@ struct EmscriptenContext g_emscripten_ctx;
 
 #include <wasmjit/emscripten_runtime_def.h>
 
-extern struct ModuleInst WASM_MODULE_SYMBOL(asm);
-extern struct FuncInst WASM_FUNC_SYMBOL(asm, _main);
-extern struct FuncInst WASM_FUNC_SYMBOL(asm, stackAlloc);
-extern struct FuncInst WASM_FUNC_SYMBOL(asm, ___errno_location) __attribute__((weak));
-extern struct FuncInst WASM_FUNC_SYMBOL(asm, ___emscripten_environ_constructor) __attribute__((weak));
-extern struct FuncInst WASM_FUNC_SYMBOL(asm, _malloc)  __attribute__((weak));
-extern struct FuncInst WASM_FUNC_SYMBOL(asm, _free)  __attribute__((weak));
+extern struct StaticModuleInst WASM_MODULE_SYMBOL(asm);
 
 __attribute__((constructor))
 static void init_module(void)
@@ -267,19 +261,11 @@ static void init_module(void)
 extern char **environ;
 int main(int argc, char *argv[]) {
 	int ret;
-	ret = wasmjit_emscripten_init(&g_emscripten_ctx,
-				      &WASM_MODULE_SYMBOL(asm),
-				      &WASM_FUNC_SYMBOL(asm, ___errno_location),
-				      &WASM_FUNC_SYMBOL(asm, _malloc),
-				      &WASM_FUNC_SYMBOL(asm, _free),
+	ret = wasmjit_emscripten_init(&WASM_MODULE_SYMBOL(env).module,
+				      &WASM_MODULE_SYMBOL(asm).module,
 				      environ);
 	if (ret)
 		return -1;
-	ret = wasmjit_emscripten_build_environment(&WASM_FUNC_SYMBOL(asm, ___emscripten_environ_constructor));
-	if (ret)
-		return -1;
-	return wasmjit_emscripten_invoke_main(&WASM_MEMORY_SYMBOL(env, memory),
-					      &WASM_FUNC_SYMBOL(asm, stackAlloc),
-					      &WASM_FUNC_SYMBOL(asm, _main),
+	return wasmjit_emscripten_invoke_main(&WASM_MODULE_SYMBOL(env).module,
 					      argc, argv);
 }

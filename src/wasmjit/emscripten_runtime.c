@@ -470,58 +470,16 @@ static void _wasmjit_remove_unfreed_pointer(struct FuncInst *funcinst, size_t id
 
 #endif
 
-int wasmjit_emscripten_init(struct EmscriptenContext *ctx,
+int wasmjit_emscripten_init(struct ModuleInst *env,
 			    struct ModuleInst *asm_,
-			    struct FuncInst *errno_location_inst,
-			    struct FuncInst *malloc_inst,
-			    struct FuncInst *free_inst,
 			    char *envp[])
 {
-	if (malloc_inst) {
-		struct FuncType malloc_type;
-		wasmjit_valtype_t malloc_input_type = VALTYPE_I32;
-		wasmjit_valtype_t malloc_return_type = VALTYPE_I32;
+	struct EmscriptenContext *ctx;
+	struct FuncInst *environ_constructor;
 
-		_wasmjit_create_func_type(&malloc_type,
-					  1, &malloc_input_type,
-					  1, &malloc_return_type);
-
-		if (!wasmjit_typecheck_func(&malloc_type,
-					    malloc_inst))
-			return -1;
-	}
-
-	if (free_inst) {
-		struct FuncType free_type;
-		wasmjit_valtype_t free_input_type = VALTYPE_I32;
-
-		_wasmjit_create_func_type(&free_type,
-					  1, &free_input_type,
-					  0, NULL);
-
-		if (!wasmjit_typecheck_func(&free_type,
-					    free_inst))
-			return -1;
-	}
-
-	if (errno_location_inst) {
-		struct FuncType errno_location_type;
-		wasmjit_valtype_t errno_location_return_type = VALTYPE_I32;
-
-		_wasmjit_create_func_type(&errno_location_type,
-					  0, NULL,
-					  1, &errno_location_return_type);
-
-		if (!wasmjit_typecheck_func(&errno_location_type,
-					    errno_location_inst)) {
-			return -1;
-		}
-	}
+	ctx = wasmjit_emscripten_get_context(env);
 
 	ctx->asm_ = asm_;
-	ctx->errno_location_inst = errno_location_inst;
-	ctx->malloc_inst = malloc_inst;
-	ctx->free_inst = free_inst;
 	ctx->environ = envp;
 	ctx->buildEnvironmentCalled = 0;
 	ctx->fd_table.n_elts = 0;
@@ -541,13 +499,12 @@ int wasmjit_emscripten_init(struct EmscriptenContext *ctx,
 
 	set_signal_context(ctx);
 
-	return 0;
-}
-
-int wasmjit_emscripten_build_environment(struct FuncInst *environ_constructor)
-{
-	int ret;
+	environ_constructor = wasmjit_get_export
+		(asm_,
+		 "___emscripten_environ_constructor",
+		 IMPORT_DESC_TYPE_FUNC).func;
 	if (environ_constructor) {
+		int ret;
 		struct FuncType errno_location_type;
 
 		_wasmjit_create_func_type(&errno_location_type,
@@ -603,14 +560,34 @@ static void _we_at_exit(struct ModuleInst *asm_)
 	_fflush(asm_, 0);
 }
 
-int wasmjit_emscripten_invoke_main(struct MemInst *meminst,
-				   struct FuncInst *stack_alloc_inst,
-				   struct FuncInst *main_inst,
+int wasmjit_emscripten_invoke_main(struct ModuleInst *env,
 				   int argc,
 				   char *argv[]) {
 	uint32_t (*stack_alloc)(uint32_t);
 	union ValueUnion out;
 	int ret;
+	struct FuncInst
+		*main_inst,
+		*stack_alloc_inst;
+	struct MemInst *meminst;
+	struct ModuleInst *asm_;
+
+	asm_ = wasmjit_emscripten_get_context(env)->asm_;
+
+	main_inst = wasmjit_get_export(asm_, "_main",
+				       IMPORT_DESC_TYPE_FUNC).func;
+	if (!main_inst)
+		return -1;
+
+	stack_alloc_inst = wasmjit_get_export(asm_, "stackAlloc",
+					      IMPORT_DESC_TYPE_FUNC).func;
+	if (!stack_alloc_inst)
+		return -1;
+
+	meminst = wasmjit_get_export(env, "memory",
+				     IMPORT_DESC_TYPE_MEM).mem;
+	if (!meminst)
+		return -1;
 
 	if (!(stack_alloc_inst->type.n_inputs == 1 &&
 	      stack_alloc_inst->type.input_types[0] == VALTYPE_I32 &&
@@ -783,11 +760,31 @@ void wasmjit_emscripten____lock(uint32_t x, struct FuncInst *funcinst)
 void wasmjit_emscripten____setErrNo(uint32_t value, struct FuncInst *funcinst)
 {
 	union ValueUnion out;
+	struct FuncInst *errno_location_inst;
 	struct EmscriptenContext *ctx =
 		_wasmjit_emscripten_get_context(funcinst);
 
-	if (ctx->errno_location_inst &&
-	    !wasmjit_invoke_function(ctx->errno_location_inst, NULL, &out)) {
+	errno_location_inst = wasmjit_get_export(ctx->asm_, "___errno_location",
+						 IMPORT_DESC_TYPE_FUNC).func;
+	if (!errno_location_inst)
+		wasmjit_emscripten_internal_abort("Failed to set errno from JS");
+
+	{
+		struct FuncType errno_location_type;
+		wasmjit_valtype_t errno_location_return_type = VALTYPE_I32;
+
+		_wasmjit_create_func_type(&errno_location_type,
+					  0, NULL,
+					  1, &errno_location_return_type);
+
+		if (!wasmjit_typecheck_func(&errno_location_type,
+					    errno_location_inst)) {
+			wasmjit_emscripten_internal_abort("Failed to set errno from JS");
+		}
+	}
+
+	if (errno_location_inst &&
+	    !wasmjit_invoke_function(errno_location_inst, NULL, &out)) {
 		value = uint32_t_swap_bytes(value);
 		if (!_wasmjit_emscripten_copy_to_user(funcinst, out.i32, &value, sizeof(value)))
 			return;
@@ -1271,12 +1268,32 @@ static uint32_t getMemory(struct FuncInst *funcinst,
 {
 	struct EmscriptenContext *ctx;
 	union ValueUnion input, output;
-	input.i32 = amount;
+	struct FuncInst *malloc_inst;
 
 	ctx = _wasmjit_emscripten_get_context(funcinst);
-	if (!ctx->malloc_inst)
+
+	malloc_inst = wasmjit_get_export(ctx->asm_, "_malloc",
+					 IMPORT_DESC_TYPE_FUNC).func;
+	if (!malloc_inst)
 		return 0;
-	if (wasmjit_invoke_function(ctx->malloc_inst, &input, &output))
+
+	/* type check */
+	{
+		struct FuncType malloc_type;
+		wasmjit_valtype_t malloc_input_type = VALTYPE_I32;
+		wasmjit_valtype_t malloc_return_type = VALTYPE_I32;
+
+		_wasmjit_create_func_type(&malloc_type,
+					  1, &malloc_input_type,
+					  1, &malloc_return_type);
+
+		if (!wasmjit_typecheck_func(&malloc_type,
+					    malloc_inst))
+			return 0;
+	}
+
+	input.i32 = amount;
+	if (wasmjit_invoke_function(malloc_inst, &input, &output))
 		return 0;
 
 	/* check if userspace is malicious */
@@ -1293,10 +1310,28 @@ static void freeMemory(struct EmscriptenContext *ctx,
 		       uint32_t ptr)
 {
 	union ValueUnion input;
-	input.i32 = ptr;
-	if (!ctx->free_inst)
+	struct FuncInst *free_inst;
+
+	free_inst = wasmjit_get_export(ctx->asm_, "_free",
+				       IMPORT_DESC_TYPE_FUNC).func;
+	if (!free_inst)
 		wasmjit_emscripten_internal_abort("Failed to invoke deallocator");
-	if (wasmjit_invoke_function(ctx->free_inst, &input, NULL))
+
+	{
+		struct FuncType free_type;
+		wasmjit_valtype_t free_input_type = VALTYPE_I32;
+
+		_wasmjit_create_func_type(&free_type,
+					  1, &free_input_type,
+					  0, NULL);
+
+		if (!wasmjit_typecheck_func(&free_type,
+					    free_inst))
+			wasmjit_emscripten_internal_abort("Failed to invoke deallocator");
+	}
+
+	input.i32 = ptr;
+	if (wasmjit_invoke_function(free_inst, &input, NULL))
 		wasmjit_emscripten_internal_abort("Failed to invoke deallocator");
 }
 
