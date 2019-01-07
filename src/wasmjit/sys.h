@@ -1,7 +1,7 @@
 /* -*-mode:c; tab-width: 8; indent-tabs-mode: t; c-basic-offset: 8 -*- */
 
 /*
-  Copyright (c) 2018 Rian Hunter et. al, see AUTHORS file.
+  Copyright (c) 2018,2019 Rian Hunter et. al, see AUTHORS file.
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
@@ -25,197 +25,6 @@
 #ifndef __WASMJIT__SYS_H__
 #define __WASMJIT__SYS_H__
 
-#ifdef __KERNEL__
-
-#include <linux/types.h>
-#include <linux/bug.h>
-#include <linux/string.h>
-#include <linux/mm.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#ifdef NDEBUG
-#define assert(x)
-#else
-#define assert(x) BUG_ON(!(x))
-#endif
-
-#define OFF (sizeof(size_t) * 2)
-
-extern int errno;
-
-__attribute__((unused))
-static void *malloc(size_t size)
-{
-	char *ret;
-	size_t cap = 1;
-
-	if (!size)
-		return NULL;
-
-	while ((size + OFF) > cap) {
-		cap <<= 1;
-	}
-
-	ret = kvmalloc(cap, GFP_KERNEL);
-	if (!ret) {
-		errno = ENOMEM;
-		return NULL;
-	}
-	memcpy(ret, &cap, sizeof(cap));
-	memcpy(ret + sizeof(cap), &size, sizeof(size));
-	return &ret[OFF];
-}
-
-__attribute__((unused))
-static void free(void *ptr)
-{
-	if (ptr)
-		kvfree(&((char *)ptr)[-OFF]);
-}
-
-__attribute__((unused))
-static void *calloc(size_t nmemb, size_t elt_size)
-{
-	char *ret;
-	size_t size, cap;
-	if (__builtin_umull_overflow(nmemb, elt_size, &size)) {
-		errno = ENOMEM;
-		return NULL;
-	}
-
-	if (!size)
-		return NULL;
-
-	cap = 1;
-	while ((size + OFF) > cap) {
-		cap <<= 1;
-	}
-
-	ret = kvzalloc(cap, GFP_KERNEL);
-	if (!ret) {
-		errno = ENOMEM;
-		return NULL;
-	}
-
-	memcpy(ret, &cap, sizeof(cap));
-	memcpy(ret + sizeof(cap), &size, sizeof(size));
-
-	return &ret[OFF];
-}
-
-__attribute__((unused))
-static void *realloc(void *previous, size_t size)
-{
-	char *cptr = previous, *new;
-
-	if (!size) {
-		free(previous);
-		return NULL;
-	}
-
-	if (cptr) {
-		size_t prev_cap;
-		memcpy(&prev_cap, &cptr[-OFF], sizeof(prev_cap));
-
-		if ((size + OFF) < prev_cap) {
-			/* NB: we don't support shrinking */
-			memcpy(&cptr[-OFF + sizeof(prev_cap)], &size, sizeof(size));
-			return cptr;
-		}
-	}
-
-	new = malloc(size);
-	if (!new)
-		return NULL;
-
-	if (cptr) {
-		size_t prev_size;
-		memcpy(&prev_size, &cptr[-OFF + sizeof(size_t)], sizeof(prev_size));
-		memcpy(new, cptr, prev_size);
-		free(cptr);
-	}
-
-	return new;
-}
-
-__attribute__((unused))
-static char *strdup(const char *s)
-{
-	size_t l = strlen(s);
-	char *n = malloc(l + 1);
-	if (!n)
-		return NULL;
-	memcpy(n, s, l + 1);
-	return n;
-}
-
-#define PRIx32 "x"
-#define PRIu32 "u"
-#define UINT32_MAX 4294967295
-#define INT32_MAX 2147483647
-#define INT32_MIN (-2147483648)
-
-#if defined __GNUC__ && defined __GNUC_MINOR__
-# define __GNUC_PREREQ(maj, min) \
-	((__GNUC__ << 16) + __GNUC_MINOR__ >= ((maj) << 16) + (min))
-#else
-# define __GNUC_PREREQ(maj, min) 0
-#endif
-
-# if __GNUC_PREREQ (3, 3)
-#  define INFINITY (__builtin_inff ())
-# else
-#  define INFINITY HUGE_VALF
-# endif
-
-#if __GNUC_PREREQ (3, 3)
-#  define NAN (__builtin_nanf (""))
-# else
-/* This will raise an "invalid" exception outside static initializers,
-   but is the best that can be done in ISO C while remaining a
-   constant expression.  */
-#  define NAN (0.0f / 0.0f)
-# endif
-
-typedef int64_t intmax_t;
-typedef uint64_t uintmax_t;
-
-
-#ifdef __x86_64__
-typedef unsigned long __jmp_buf[8];
-#else
-#error Only works on x86_64
-#endif
-
-typedef struct __jmp_buf_tag {
-	__jmp_buf __jb;
-	unsigned long __fl;
-	unsigned long __ss[128/sizeof(long)];
-} jmp_buf[1];
-
-int setjmp(jmp_buf);
-void longjmp(jmp_buf, int) __attribute__((noreturn));
-
-typedef jmp_buf wasmjit_thread_state;
-#define wasmjit_save_thread_state(s) setjmp((s))
-#define wasmjit_restore_thread_state(s, d) longjmp((s), (d))
-
-#define getpagesize() PAGE_SIZE
-
-/* Kernel doesn't define this */
-#define CHAR_BIT 8
-
-typedef int sig_atomic_t;
-
-#ifdef __cplusplus
-}
-#endif
-
-#else
-
 #include <stddef.h>
 #include <assert.h>
 #include <stddef.h>
@@ -227,13 +36,72 @@ typedef int sig_atomic_t;
 #include <math.h>
 #include <setjmp.h>
 #include <limits.h>
-#include <grp.h>
-#include <pwd.h>
+#include <stdbool.h>
+#include <stdatomic.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef sigjmp_buf wasmjit_thread_state;
-#define wasmjit_save_thread_state(s) sigsetjmp((s), 0)
-#define wasmjit_restore_thread_state(s, d) siglongjmp((s), (d))
+#define wasmjit_save_thread_state(s) setjmp((s))
+#define wasmjit_restore_thread_state(s, d) longjmp((s), (d))
 
+#define RESTRICT_ATTR restrict
+
+#define wasmjit_warning(fmt, ...) fprintf(stderr, "warning: wasmjit: " fmt "\n", __VA_ARGS__)
+
+typedef atomic_ulong wasmjit_atomic_unsigned_long;
+
+__attribute__((unused))
+static bool test_bit(long nr, volatile wasmjit_atomic_unsigned_long *addr)
+{
+	unsigned long val;
+	val = atomic_load_explicit(addr, memory_order_acquire);
+	return !!(val & (((unsigned long) 1) << nr));
+}
+
+__attribute__((unused))
+static void set_bit(long nr, volatile wasmjit_atomic_unsigned_long *addr)
+{
+	unsigned long val, newval;
+
+	do {
+		val = atomic_load_explicit(addr, memory_order_acquire);
+		newval = val | (((unsigned long) 1) << nr);
+	} while (!atomic_compare_exchange_weak_explicit(addr, &val, newval,
+							memory_order_release,
+							memory_order_relaxed));
+}
+
+__attribute__((unused))
+static void clear_bit(long nr, volatile wasmjit_atomic_unsigned_long *addr)
+{
+	unsigned long val, newval;
+
+	do {
+		val = atomic_load_explicit(addr, memory_order_acquire);
+		newval = val & (~((unsigned long) 1) << nr);
+	} while (!atomic_compare_exchange_weak_explicit(addr, &val, newval,
+							memory_order_release,
+							memory_order_relaxed));
+}
+
+void *wasmjit_map_code_segment(size_t code_size);
+int wasmjit_mark_code_segment_executable(void *code, size_t code_size);
+int wasmjit_unmap_code_segment(void *code, size_t code_size);
+
+char *wasmjit_load_file(const char *filename, size_t *size);
+void wasmjit_unload_file(char *buf, size_t size);
+
+int wasmjit_set_stack_top(void *stack_top);
+void *wasmjit_stack_top(void);
+
+int wasmjit_set_jmp_buf(wasmjit_thread_state *jmpbuf);
+wasmjit_thread_state *wasmjit_get_jmp_buf(void);
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif

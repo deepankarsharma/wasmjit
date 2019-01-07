@@ -1,7 +1,7 @@
 /* -*-mode:c; tab-width: 8; indent-tabs-mode: t; c-basic-offset: 8 -*- */
 
 /*
-  Copyright (c) 2018 Rian Hunter et. al, see AUTHORS file.
+  Copyright (c) 2018,2019 Rian Hunter et. al, see AUTHORS file.
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
@@ -25,71 +25,8 @@
 #ifndef __WASMJIT__EMSCRIPTEN_RUNTIME_SYS_H__
 #define __WASMJIT__EMSCRIPTEN_RUNTIME_SYS_H__
 
-#ifdef __KERNEL__
-
-#include <linux/uio.h>
-#include <linux/sched.h>
-#include <linux/kallsyms.h>
-#include <linux/limits.h>
-#include <linux/socket.h>
-#include <linux/poll.h>
-#include <linux/stat.h>
-#include <linux/dirent.h>
-#include <linux/statfs.h>
-#include <linux/fadvise.h>
-#include <linux/binfmts.h>
-#include <linux/termios.h>
-
-typedef int socklen_t;
-typedef struct user_msghdr user_msghdr_t;
-typedef unsigned int nfds_t;
-
-#define SYS_CMSG_NXTHDR(msg, cmsg) __CMSG_NXTHDR((msg)->msg_control, (msg)->msg_controllen, (cmsg))
-
-#define FD_ZERO(s) do { int __i; unsigned long *__b=(s)->fds_bits; for(__i=sizeof (fd_set)/sizeof (long); __i; __i--) *__b++=0; } while(0)
-#define FD_SET(d, s)   ((s)->fds_bits[(d)/(8*sizeof(long))] |= (1UL<<((d)%(8*sizeof(long)))))
-#define FD_CLR(d, s)   ((s)->fds_bits[(d)/(8*sizeof(long))] &= ~(1UL<<((d)%(8*sizeof(long)))))
-#define FD_ISSET(d, s) !!((s)->fds_bits[(d)/(8*sizeof(long))] & (1UL<<((d)%(8*sizeof(long)))))
-
-#define st_get_nsec(m, st) ((st)->st_ ## m ## time_nsec)
-
-struct not_real;
-typedef struct not_real DIR;
-
-typedef struct statfs64 user_statvfs;
-
-#define statvfs_get_type(pstvfs) ((pstvfs)->f_type)
-#define statvfs_get_low_fsid(pstvfs) ((pstvfs)->f_fsid.val[0])
-#define statvfs_get_high_fsid(pstvfs) ((pstvfs)->f_fsid.val[1])
-#define statvfs_get_flags(pstvfs) ((pstvfs)->f_flags)
-#define statvfs_get_namemax(pstvfs) ((pstvfs)->f_namelen)
-
-#ifndef ST_WRITE
-#define ST_WRITE 0x0080
-#endif
-
-#ifndef ST_APPEND
-#define ST_APPEND 0x100
-#endif
-
-#ifndef ST_IMMUTABLE
-#define ST_IMMUTABLE 0x100
-#endif
-
-typedef struct {
-} sem_t;
-
-#define WIFEXITED(_status) (!((_status) & 0x7f))
-#define WEXITSTATUS(_status) (((_status) >> 8) & 0xff)
-#define WIFSIGNALED(_status) (((_status) & 0x7f) && (((_status) & 0x7f) != 0x7f))
-#define WTERMSIG(_status) ((_status) & 0x7f)
-#define WCOREDUMP(_status) ((_status) & 0x80)
-#define WIFSTOPPED(_status) (((_status) & 0x7f) == 0x7f)
-#define WSTOPSIG(_status) (((_status) >> 8) & 0xff)
-#define WIFCONTINUED(_status) (((_status) & 0xffff) == 0xffff)
-
-#else
-
+#include <grp.h>
+#include <pwd.h>
 #include <errno.h>
 #include <poll.h>
 #include <unistd.h>
@@ -111,6 +48,11 @@ typedef struct {
 #include <sys/wait.h>
 #include <netinet/tcp.h>
 #include <sys/ioctl.h>
+
+/* for system's getaddrinfo */
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
 
 #ifdef __APPLE__
 
@@ -192,8 +134,6 @@ int posix_fadvise(int fd, off_t offset, off_t len, int advice);
 #define POSIX_FADV_NOREUSE 0
 #endif
 
-#endif
-
 #include <wasmjit/util.h>
 
 /* declare all sys calls */
@@ -216,58 +156,11 @@ int posix_fadvise(int fd, off_t offset, off_t len, int advice);
 #define KWSC5(f, ...) KWSCx(5, f, __VA_ARGS__)
 #define KWSC6(f, ...) KWSCx(6, f, __VA_ARGS__)
 
-#ifdef __KERNEL__
-
-#define KWSCx(_n, err, _pre, _name, ...) extern long (*_pre ## sys_ ## _name)(__KMAP(_n, __KDECL, __VA_ARGS__) VOID##_n);
-
-#include <wasmjit/posix_sys_linux_kernel_def.h>
-
-#define sys_pread sys_pread64
-#define sys_pwrite sys_pwrite64
-
-long sys_prlimit(pid_t pid, unsigned int resource,
-		 const struct rlimit *new_limit,
-		 struct rlimit *old_limit);
-
-#define sys_statvfs(path, buf) sys_statfs64((path), sizeof(*(buf)), (buf))
-
-#define sys_posix_fadvise sys_fadvise64_64
-#define sys_pwritev(fd, vec, vlen, pos) _sys_pwritev((fd), (vec), (vlen), ((unsigned long) (pos)) & 0xffffffff, (((unsigned long)(pos)) >> 32) & 0xffffffff)
-
-#if defined(__ARCH_WANT_STAT64)
-
-typedef struct stat64 sys_stat_t;
-
-#define sys_stat sys_stat64
-#define sys_lstat sys_lstat64
-#define sys_fstat sys_fstat64
-#define sys_fstatat sys_fstatat64
-
-#else
-
-typedef struct stat sys_stat_t;
-
-#define sys_stat sys_newstat
-#define sys_lstat sys_newlstat
-#define sys_fstat sys_newfstat
-#define sys_fstatat sys_newfstatat
-
-#endif
-
-#define sys_sigprocmask(how, nset, oset) (sys_rt_sigprocmask((how), (nset), (oset), sizeof(sigset_t)))
-#define sys_sigsuspend(nset) (sys_rt_sigsuspend((nset), sizeof(sigset_t)))
-
-#define sys_waitpid(_pid, _status, _options) (sys_wait4((_pid), (_status), (_options), NULL))
-
-#else
-
 typedef struct stat sys_stat_t;
 
 #define KWSCx(_n, err, _pre, _name, ...) long _pre ## sys_ ## _name(__KMAP(_n, __KDECL, __VA_ARGS__));
 
-#include <wasmjit/posix_sys_posix_def.h>
-
-#endif
+#include <wasmjit/posix_sys_def.h>
 
 #undef KWSC0
 #undef KWSC1
@@ -286,5 +179,18 @@ typedef struct stat sys_stat_t;
 #undef VOID5
 #undef VOID6
 
+#if defined(__linux__)
+#define EM_IS_LINUX 1
+#else
+#define EM_IS_LINUX 0
+#endif
+
+typedef struct tm user_tm;
+
+__attribute__((unused))
+static time_t user_mktime(user_tm *timeptr)
+{
+	return mktime(timeptr);
+}
 
 #endif

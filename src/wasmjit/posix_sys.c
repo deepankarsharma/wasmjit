@@ -1,7 +1,7 @@
 /* -*-mode:c; tab-width: 8; indent-tabs-mode: t; c-basic-offset: 8 -*- */
 
 /*
-  Copyright (c) 2018 Rian Hunter et. al, see AUTHORS file.
+  Copyright (c) 2018,2019 Rian Hunter et. al, see AUTHORS file.
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
@@ -39,7 +39,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 
-#if !(defined(__linux__) || defined(__KERNEL__))
+#if !defined(__linux__)
 
 int prlimit(int pid, int resource,
 	    const struct rlimit *new_limit,
@@ -135,4 +135,4 @@ ssize_t pwritev(int fd, const struct iovec *iov, int iovcnt,
 #define KWSC5(f, ...) KWSCx(5, f, __VA_ARGS__)
 #define KWSC6(f, ...) KWSCx(6, f, __VA_ARGS__)
 
-#include <wasmjit/posix_sys_posix_def.h>
+#include <wasmjit/posix_sys_def.h>

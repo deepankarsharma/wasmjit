@@ -1,7 +1,7 @@
 /* -*-mode:c; tab-width: 8; indent-tabs-mode: t; c-basic-offset: 8 -*- */
 
 /*
-  Copyright (c) 2018 Rian Hunter et. al, see AUTHORS file.
+  Copyright (c) 2018,2019 Rian Hunter et. al, see AUTHORS file.
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
@@ -29,29 +29,10 @@
 
 #include <wasmjit/emscripten_runtime.h>
 
-#ifndef __KERNEL__
-/* for system's getaddrinfo */
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#endif
-
 #include <wasmjit/posix_sys.h>
 #include <wasmjit/util.h>
 #include <wasmjit/runtime.h>
 #include <wasmjit/sys.h>
-
-#if defined(__linux__) || defined(__KERNEL__)
-#define IS_LINUX 1
-#else
-#define IS_LINUX 0
-#endif
-
-#if defined(__KERNEL__)
-#define RESTRICT_ATTR
-#else
-#define RESTRICT_ATTR restrict
-#endif
 
 #define STATIC_ASSERT(COND,MSG) typedef char static_assertion_##MSG[(COND)?1:-1]
 #define COMPILE_TIME_ASSERT3(X,L) STATIC_ASSERT(X,static_assertion_at_line_##L)
@@ -123,12 +104,6 @@ static int32_t int32_t_swap_bytes(int32_t a)
 
 #define OVERFLOWS(a) OVERFLOWSN((a), 4)
 
-#ifdef __KERNEL__
-#define wasmjit_warning(fmt, ...) printk(KERN_NOTICE "kwasmjit (%d): " fmt "\n", current->pid, __VA_ARGS__)
-#else
-#define wasmjit_warning(fmt, ...) fprintf(stderr, "warning: wasmjit: " fmt "\n", __VA_ARGS__)
-#endif
-
 enum {
 #define ERRNO(name, value) EM_ ## name = value,
 #include <wasmjit/emscripten_runtime_sys_errno_def.h>
@@ -169,7 +144,7 @@ static int32_t _convert_errno(long errno_)
 
 /* error codes are the same for these targets */
 /* issigned == 0 implies no error */
-#if (defined(__KERNEL__) || defined(__linux__)) && defined(__x86_64__)
+#if EM_IS_LINUX && defined(__x86_64__)
 
 static int32_t check_ret_signed(long errno_, int issigned)
 {
@@ -377,34 +352,6 @@ static void remove_signal_context(void)
 	_g_handler_setting = 0;
 }
 
-#ifdef __KERNEL__
-
-typedef int wasmjit_signal_block_ctx;
-
-static void _wasmjit_block_signals(wasmjit_signal_block_ctx *set)
-{
-	(void) set;
-}
-
-static void _wasmjit_unblock_signals(const wasmjit_signal_block_ctx *set)
-{
-	(void) set;
-}
-
-static size_t _wasmjit_add_unfreed_pointer(struct FuncInst *funcinst, void *ptr)
-{
-	(void) funcinst;
-	(void) ptr;
-	return 0;
-}
-
-static void _wasmjit_remove_unfreed_pointer(struct FuncInst *funcinst, size_t ptr)
-{
-	(void) funcinst;
-	(void) ptr;
-}
-
-#else
 
 typedef sigset_t wasmjit_signal_block_ctx;
 
@@ -467,8 +414,6 @@ static void _wasmjit_remove_unfreed_pointer(struct FuncInst *funcinst, size_t id
 	ctx = _wasmjit_emscripten_get_context(funcinst);
 	ctx->unfreed_pointers.elts[idx - 1] = NULL;
 }
-
-#endif
 
 int wasmjit_emscripten_init(struct ModuleInst *env,
 			    struct ModuleInst *asm_,
@@ -883,7 +828,7 @@ uint32_t wasmjit_emscripten____syscall140(uint32_t which, uint32_t varargs, stru
 	     off < OFF_MIN))
 		return -EM_EOVERFLOW;
 
-#if !IS_LINUX
+#if !EM_IS_LINUX
 	{
 		struct EmscriptenContext *ctx;
 		uint32_t fds;
@@ -1182,7 +1127,7 @@ uint32_t wasmjit_emscripten____syscall54(uint32_t which, uint32_t varargs, struc
 uint32_t wasmjit_emscripten____syscall6(uint32_t which, uint32_t varargs, struct FuncInst *funcinst)
 {
 	long closedret;
-#if !IS_LINUX
+#if !EM_IS_LINUX
 	wasmjit_signal_block_ctx set;
 #endif
 
@@ -1192,7 +1137,8 @@ uint32_t wasmjit_emscripten____syscall6(uint32_t which, uint32_t varargs, struct
 
 	(void)which;
 
-#if !IS_LINUX
+
+#if !EM_IS_LINUX
 	_wasmjit_block_signals(&set);
 
 	{
@@ -1225,7 +1171,7 @@ uint32_t wasmjit_emscripten____syscall6(uint32_t which, uint32_t varargs, struct
 
 	closedret = sys_close(args.fd);
 
-#if !IS_LINUX
+#if !EM_IS_LINUX
  out:
 	_wasmjit_unblock_signals(&set);
 #endif
@@ -1444,7 +1390,7 @@ uint32_t wasmjit_emscripten____syscall10(uint32_t which, uint32_t varargs,
 #endif
 #endif
 
-#if (defined(__linux__) || defined(__KERNEL__)) && !defined(__mips__)
+#if EM_IS_LINUX && !defined(__mips__)
 
 static int convert_socket_type_to_local(int32_t type)
 {
@@ -1563,7 +1509,7 @@ static int32_t convert_socket_type_to_em(int type)
 #define EM_AF_INET 2
 #define EM_AF_INET6 10
 
-#if defined(__linux__) || defined(__KERNEL__)
+#if EM_IS_LINUX
 
 static int convert_socket_domain_to_local(int32_t domain)
 {
@@ -1753,7 +1699,7 @@ static int32_t convert_proto_to_em(int32_t domain, int proto)
 
 #define FAS 2
 
-#if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ && (defined(__linux__) || defined(__KERNEL__)))
+#if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ && EM_IS_LINUX)
 #define SAME_SOCKADDR
 #endif
 
@@ -2020,7 +1966,7 @@ static long finish_acceptlike(long (*acceptlike)(int, struct sockaddr *, socklen
 #define EM_MSG_MORE 32768
 #define EM_MSG_CMSG_CLOEXEC 1073741824
 
-#if defined(__linux__) || defined(__KERNEL__)
+#if EM_IS_LINUX
 
 static int convert_sendto_flags(int32_t flags)
 {
@@ -4508,7 +4454,7 @@ static int check_poll_events(int16_t events) {
 		EM_POLLRDBAND |
 		EM_POLLWRNORM |
 		EM_POLLWRBAND |
-#if (defined(__KERNEL__) || defined(__linux__))
+#if EM_IS_LINUX
 		EM_POLLREMOVE |
 		EM_POLLMSG |
 		EM_POLLRDHUP |
@@ -4539,7 +4485,7 @@ static short convert_poll_events(int16_t events)
 	CS(POLLWRNORM);
 	CS(POLLWRBAND);
 
-#if (defined(__KERNEL__) || defined(__linux__))
+#if EM_IS_LINUX
 	CS(POLLREMOVE);
 	CS(POLLMSG);
 	CS(POLLRDHUP);
@@ -4569,7 +4515,7 @@ static int16_t back_convert_poll_events(short events)
 	CS(POLLWRNORM);
 	CS(POLLWRBAND);
 
-#if (defined(__KERNEL__) || defined(__linux__))
+#if EM_IS_LINUX
 	CS(POLLREMOVE);
 	CS(POLLMSG);
 	CS(POLLRDHUP);
@@ -4619,13 +4565,13 @@ uint32_t wasmjit_emscripten____syscall168(uint32_t which, uint32_t varargs,
 	    POLLERR == EM_POLLERR &&
 	    POLLHUP == EM_POLLHUP &&
 	    POLLNVAL == EM_POLLNVAL &&
-#if (defined(__KERNEL__) || defined(__linux__))
+#if EM_IS_LINUX
 	    POLLREMOVE == EM_POLLREMOVE &&
 	    POLLMSG == EM_POLLMSG &&
 	    POLLRDHUP == EM_POLLRDHUP &&
 #endif
 	    1) {
-#if !(defined(__KERNEL__) || defined(__linux__))
+#if !EM_IS_LINUX
 		/* if not on linux, check that only posix flags are specfied */
 		{
 			uint32_t i;
@@ -4789,7 +4735,7 @@ uint32_t wasmjit_emscripten____syscall181(uint32_t which, uint32_t varargs,
 
 static int convert_resource(int32_t resource)
 {
-#if (defined(__KERNEL__) || defined(__linux__))
+#if EM_IS_LINUX
 	return resource;
 #endif
 
@@ -5277,7 +5223,7 @@ uint32_t wasmjit_emscripten____syscall212(uint32_t which, uint32_t varargs,
 
 em_unsigned_char convert_dtype(em_unsigned_char d_type)
 {
-#if IS_LINUX
+#if EM_IS_LINUX
 	return d_type;
 #endif
 	switch (d_type) {
@@ -5294,7 +5240,7 @@ em_unsigned_char convert_dtype(em_unsigned_char d_type)
 
 /* getdents64 */
 
-#if IS_LINUX
+#if EM_IS_LINUX
 
 STATIC_ASSERT(sizeof(struct em_linux_dirent64) <= sizeof(struct linux_dirent64),
 	      em_linux_dirent64_too_large);
@@ -5589,7 +5535,7 @@ static int check_flags(uint32_t flags)
 
 static int convert_sys_flags(uint32_t flags)
 {
-#if IS_LINUX && defined(__x86_64__)
+#if EM_IS_LINUX && defined(__x86_64__)
 	return flags;
 #else
 
@@ -5740,7 +5686,7 @@ static int check_statvfs_flags(unsigned long flag)
 #endif
 		0;
 
-#if IS_LINUX
+#if EM_IS_LINUX
 	if (sizeof(flag) <= 4 || !(flag >> 32))
 		return 1;
 #endif
@@ -5753,7 +5699,7 @@ static uint32_t convert_statvfs_flags(unsigned long flag)
 {
 	uint32_t out = 0;
 
-#if IS_LINUX
+#if EM_IS_LINUX
 	if (sizeof(flag) <= 4 || !(flag >> 32))
 		return flag;
 #endif
@@ -5870,7 +5816,7 @@ uint32_t wasmjit_emscripten____syscall268(uint32_t which, uint32_t varargs,
 
 int check_advice(uint32_t advice)
 {
-#if 0 && IS_LINUX && !defined(__s390x__)
+#if 0 && EM_IS_LINUX && !defined(__s390x__)
 	(void)advice;
 	return 1;
 #else
@@ -5890,7 +5836,7 @@ int check_advice(uint32_t advice)
 
 int convert_advice(uint32_t advice)
 {
-#if 0 && IS_LINUX && !defined(__s390x__)
+#if 0 && EM_IS_LINUX && !defined(__s390x__)
 	return advice;
 #else
 	int out = 0;
@@ -6248,7 +6194,7 @@ uint32_t wasmjit_emscripten____syscall97(uint32_t which, uint32_t varargs,
 
 	(void)which;
 
-#if IS_LINUX
+#if EM_IS_LINUX
 	sys_which = args.niceval;
 #else
 	switch (args.who) {
@@ -6343,11 +6289,6 @@ uint32_t wasmjit_emscripten__execve(uint32_t pathname,
 				    uint32_t envp,
 				    struct FuncInst *funcinst)
 {
-#ifdef __KERNEL__
-	/* TODO: implement for kernel */
-	wasmjit_emscripten____setErrNo(EM_ENOEXEC, funcinst);
-	return -1;
-#else
 	char **largv = NULL, **lenvp = NULL, *base;
 	int32_t ret;
 	wasmjit_signal_block_ctx set;
@@ -6388,7 +6329,6 @@ uint32_t wasmjit_emscripten__execve(uint32_t pathname,
 	_wasmjit_unblock_signals(&set);
 
 	return ret;
-#endif
 }
 
 #define EM_CLOCK_REALTIME           0
@@ -6412,7 +6352,7 @@ uint32_t wasmjit_emscripten__clock_gettime(uint32_t clk_id, uint32_t tp,
 	long rret;
 	clockid_t sys_clk_id;
 
-#if IS_LINUX
+#if EM_IS_LINUX
 	sys_clk_id = clk_id;
 #else
 	switch (clk_id) {
@@ -6488,11 +6428,6 @@ void wasmjit_emscripten__exit(uint32_t status,
 
 uint32_t wasmjit_emscripten__fork(struct FuncInst *funcinst)
 {
-#ifdef __KERNEL__
-	/* TODO: implement for kernel */
-	wasmjit_emscripten____setErrNo(EM_EAGAIN, funcinst);
-	return -1;
-#else
 	int ret;
 	ret = fork();
 	if (ret < 0) {
@@ -6500,7 +6435,6 @@ uint32_t wasmjit_emscripten__fork(struct FuncInst *funcinst)
 		wasmjit_emscripten____setErrNo(convert_errno(errno), funcinst);
 	}
 	return (int32_t) ret;
-#endif
 }
 
 #define EM_EAI_BADFLAGS   (-1)
@@ -6533,231 +6467,7 @@ struct em_addrinfo {
 	uint32_t ai_next;
 };
 
-#ifdef __KERNEL__
-
-#define EAI_BADFLAGS   (-1)
-#define EAI_NONAME     (-2)
-#define EAI_AGAIN      (-3)
-#define EAI_FAIL       (-4)
-#define EAI_FAMILY     (-6)
-#define EAI_SOCKTYPE   (-7)
-#define EAI_SERVICE    (-8)
-#define EAI_MEMORY     (-10)
-#define EAI_SYSTEM     (-11)
-#define EAI_OVERFLOW   (-12)
-
-#define AI_PASSIVE      0x01
-#define AI_CANONNAME    0x02
-#define AI_NUMERICHOST  0x04
-#define AI_V4MAPPED     0x08
-#define AI_ALL          0x10
-#define AI_ADDRCONFIG   0x20
-#define AI_NUMERICSERV  0x400
-
-struct addrinfo {
-	int              ai_flags;
-	int              ai_family;
-	int              ai_socktype;
-	int              ai_protocol;
-	socklen_t        ai_addrlen;
-	struct sockaddr *ai_addr;
-	char            *ai_canonname;
-	struct addrinfo *ai_next;
-};
-
-
-/* TODO: implement this */
-
-int getaddrinfo(const char *node, const char *service,
-		const struct addrinfo *hints,
-		struct addrinfo **res)
-{
-	(void) node;
-	(void) service;
-	(void) hints;
-	(void) res;
-	errno = ENOSYS;
-	return EAI_SYSTEM;
-}
-
-void freeaddrinfo(struct addrinfo *res)
-{
-	(void) res;
-}
-
-const char *gai_strerror(int errcode)
-{
-	return "Unknown error";
-}
-
-char *getenv(const char *name)
-{
-	(void) name;
-	return NULL;
-}
-
-void endgrent(void)
-{
-	/* NB: Kernel doesn't have endgrent, it's a higher level thing
-	   so we have to re-implement it in kernel space. In the future
-	   we have to move this functionality into the module */
-}
-
-struct group {
-	char *gr_name;
-	char *gr_passwd;
-	gid_t gr_gid;
-	char **gr_mem;
-};
-
-struct group *getgrent(void)
-{
-	errno = ENOMEM;
-	return NULL;
-}
-
-struct group *getgrnam(const char *name)
-{
-	errno = ENOSYS;
-	return NULL;
-}
-
-struct passwd {
-	char   *pw_name;
-	char   *pw_passwd;
-	uid_t   pw_uid;
-	gid_t   pw_gid;
-	char   *pw_gecos;
-	char   *pw_dir;
-	char   *pw_shell;
-};
-
-struct passwd *getpwnam(const char *name)
-{
-	errno = ENOSYS;
-	return NULL;
-}
-
-typedef long time_t;
-
-typedef struct {
-	int tm_sec;
-	int tm_min;
-	int tm_hour;
-	int tm_mday;
-	int tm_mon;
-	int tm_year;
-	int tm_wday;
-	int tm_yday;
-	int tm_isdst;
-	long tm_gmtoff;
-	char *tm_zone;
-} user_tm;
-
-user_tm *gmtime_r(const time_t *clock, user_tm *result)
-{
-	(void) clock;
-	(void) result;
-	errno = ENOSYS;
-	return NULL;
-}
-
-time_t time(time_t *tmloc)
-{
-	errno = ENOSYS;
-	return (time_t) -1;
-}
-
-user_tm *localtime_r(const time_t *clock, user_tm *result)
-{
-	(void) clock;
-	(void) result;
-	errno = ENOSYS;
-	return NULL;
-}
-
-time_t user_mktime(user_tm *timeptr)
-{
-	return (time_t) -1;
-}
-
-int raise(int sig)
-{
-	errno = ENOSYS;
-	return -1;
-}
-
-int sem_init(sem_t *sem, int pshared, unsigned int value)
-{
-	(void) sem;
-	(void) pshared;
-	(void) value;
-	errno = ENOSYS;
-	return -1;
-}
-
-int sem_post(sem_t *sem)
-{
-	(void) sem;
-	errno = ENOSYS;
-	return -1;
-}
-
-int sem_wait(sem_t *sem)
-{
-	(void) sem;
-	errno = ENOSYS;
-	return -1;
-}
-
-void setgrent(void)
-{
-	return;
-}
-
-size_t strftime(char *RESTRICT_ATTR s, size_t maxsize, const char *RESTRICT_ATTR format,
-		const user_tm *RESTRICT_ATTR timeptr)
-{
-	(void) s;
-	(void) maxsize;
-	(void) format;
-	(void) timeptr;
-	return 0;
-}
-
-int sigemptyset(sigset_t *set)
-{
-	/* TODO: implement */
-	(void) set;
-	return -1;
-}
-
-int sigaddset(sigset_t *set, int sig)
-{
-	/* TODO: implement */
-	(void) set;
-	(void) sig;
-	return -1;
-}
-
-int sigismember(sigset_t *set, int sig)
-{
-	/* TODO: implement */
-	(void) set;
-	(void) sig;
-	return -1;
-}
-
-long sysconf(int name)
-{
-	(void) name;
-	errno = EINVAL;
-	return -1;
-}
-
-#else
-
-#if __APPLE__
+#ifdef __APPLE__
 
 int sem_init(sem_t *sem, int pshared, unsigned int value)
 {
@@ -6783,15 +6493,6 @@ int sem_wait(sem_t *sem)
 	(void) sem;
 	errno = ENOSYS;
 	return -1;
-}
-
-#endif
-
-typedef struct tm user_tm;
-
-time_t user_mktime(user_tm *timeptr)
-{
-	return mktime(timeptr);
 }
 
 #endif
@@ -8181,7 +7882,7 @@ uint32_t wasmjit_emscripten__setitimer(uint32_t which,
 	if (EM_ITIMER_REAL == ITIMER_REAL &&
 	    EM_ITIMER_VIRTUAL == ITIMER_VIRTUAL &&
 	    EM_ITIMER_PROF == ITIMER_PROF) {
-#if !IS_LINUX
+#if !EM_IS_LINUX
 		if (which != EM_ITIMER_REAL &&
 		    which != EM_ITIMER_VIRTUAL &&
 		    which != EM_ITIMER_PROF) {
@@ -8292,7 +7993,7 @@ static int convert_signal(em_int signum)
 #include <wasmjit/emscripten_runtime_sys_sig_def.h>
 #undef SIG
 	    1) {
-#if !IS_LINUX
+#if !EM_IS_LINUX
 		if (
 #define SIG(NAME, NUM) signum != NUM &&
 #include <wasmjit/emscripten_runtime_sys_sig_def.h>
@@ -8359,24 +8060,6 @@ static void back_convert_sigset(em_sigset_t *dst, sigset_t *src)
 		}
 	}
 }
-
-#ifdef __KERNEL__
-
-uint32_t wasmjit_emscripten__sigaction(uint32_t signum,
-				       uint32_t act,
-				       uint32_t oldact,
-				       struct FuncInst *funcinst)
-{
-	(void) signum;
-	(void) act;
-	(void) oldact;
-	(void) funcinst;
-	/* TODO: implement */
-	wasmjit_emscripten____setErrNo(EM_ENOSYS, funcinst);
-	return -1;
-}
-
-#else
 
 #define EM_SA_NOCLDSTOP  1
 #define EM_SA_NOCLDWAIT  2
@@ -8575,7 +8258,7 @@ uint32_t wasmjit_emscripten__sigaction(uint32_t signum,
 			   act_v.__sa_handler.em_sa_handler == EM_SIG_IGN) {
 			sys_act_v.sa_handler = SIG_IGN;
 		} else {
-			sys_act_v.sa_sigaction = _wasmjit_emscripten_sigaction_handler;
+			sys_act_v.sa_sigaction = (void *) _wasmjit_emscripten_sigaction_handler;
 			sys_act_v.sa_flags |= SA_SIGINFO;
 		}
 
@@ -8651,8 +8334,6 @@ uint32_t wasmjit_emscripten__sigaction(uint32_t signum,
 
 	return ret;
 }
-
-#endif
 
 uint32_t wasmjit_emscripten____syscall29(uint32_t which,
 					 uint32_t varargs,
@@ -9010,7 +8691,7 @@ uint32_t wasmjit_emscripten__utimes(uint32_t path, uint32_t times,
 
 int check_waitpid_options(em_int options)
 {
-#if IS_LINUX
+#if EM_IS_LINUX
 	(void) options;
 	return 1;
 #else
@@ -9025,7 +8706,7 @@ int check_waitpid_options(em_int options)
 
 int convert_waitpid_options(em_int options)
 {
-#if IS_LINUX
+#if EM_IS_LINUX
 	return options;
 #else
 	int sys_options = 0;
@@ -9059,7 +8740,7 @@ int convert_waitpid_options(em_int options)
 
 int32_t back_convert_waitpid_status(int status)
 {
-#if IS_LINUX
+#if EM_IS_LINUX
 	return status;
 #else
 	int32_t em_status = 0;
@@ -9237,19 +8918,6 @@ void wasmjit_emscripten_internal_abort(const char *msg)
 	wasmjit_trap(WASMJIT_TRAP_ABORT);
 }
 
-#ifdef __KERNEL__
-
-#include <wasmjit/ktls.h>
-
-struct MemInst *wasmjit_emscripten_get_mem_inst(struct FuncInst *funcinst)
-{
-	return wasmjit_get_ktls()->mem_inst;
-}
-
-#else
-
 struct MemInst *wasmjit_emscripten_get_mem_inst(struct FuncInst *funcinst) {
 	return funcinst->module_inst->mems.elts[0];
 }
-
-#endif

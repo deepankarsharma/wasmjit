@@ -1,7 +1,7 @@
 /* -*-mode:c; tab-width: 8; indent-tabs-mode: t; c-basic-offset: 8 -*- */
 
 /*
-  Copyright (c) 2018 Rian Hunter et. al, see AUTHORS file.
+  Copyright (c) 2018,2019 Rian Hunter et. al, see AUTHORS file.
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
@@ -2407,9 +2407,7 @@ static int wasmjit_compile_instruction(const struct FuncType *func_types,
 			goto error;
 		break;
 	default:
-#ifndef __KERNEL__
-		fprintf(stderr, "Unhandled Opcode: 0x%" PRIx8 "\n", instruction->opcode);
-#endif
+		wasmjit_warning("Unhandled Opcode: 0x%" PRIx8, instruction->opcode);
 		assert(0);
 		break;
 	}

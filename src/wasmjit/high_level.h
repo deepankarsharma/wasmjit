@@ -1,7 +1,7 @@
 /* -*-mode:c; tab-width: 8; indent-tabs-mode: t; c-basic-offset: 8 -*- */
 
 /*
-  Copyright (c) 2018 Rian Hunter et. al, see AUTHORS file.
+  Copyright (c) 2018,2019 Rian Hunter et. al, see AUTHORS file.
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
@@ -27,8 +27,8 @@
 
 #include <wasmjit/sys.h>
 
-/* this interface mimics the kernel interface and thus lacks power
-   since we can't pass in abitrary objects for import, like host functions */
+/* this interface is meant to be exported to untrusted users and thus
+   lacks power, like being able to pass in abitrary objects for import */
 
 #ifdef __cplusplus
 extern "C" {

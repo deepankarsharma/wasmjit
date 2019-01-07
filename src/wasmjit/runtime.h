@@ -1,7 +1,7 @@
 /* -*-mode:c; tab-width: 8; indent-tabs-mode: t; c-basic-offset: 8 -*- */
 
 /*
-  Copyright (c) 2018 Rian Hunter et. al, see AUTHORS file.
+  Copyright (c) 2018,2019 Rian Hunter et. al, see AUTHORS file.
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
@@ -199,18 +199,9 @@ struct FuncInst *wasmjit_resolve_indirect_call(const struct TableInst *tableinst
 					       uint32_t idx);
 void wasmjit_trap(int reason) __attribute__((noreturn));
 void wasmjit_exit(int status) __attribute__((noreturn));
-void *wasmjit_stack_top(void);
 
 void wasmjit_free_func_inst(struct FuncInst *funcinst);
 void wasmjit_free_module_inst(struct ModuleInst *module);
-
-void *wasmjit_map_code_segment(size_t code_size);
-int wasmjit_mark_code_segment_executable(void *code, size_t code_size);
-int wasmjit_unmap_code_segment(void *code, size_t code_size);
-
-int wasmjit_set_stack_top(void *stack_top);
-int wasmjit_set_jmp_buf(wasmjit_thread_state *jmpbuf);
-wasmjit_thread_state *wasmjit_get_jmp_buf(void);
 
 union ExportPtr wasmjit_get_export(const struct ModuleInst *, const char *name, wasmjit_desc_t type);
 

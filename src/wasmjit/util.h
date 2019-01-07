@@ -1,7 +1,7 @@
 /* -*-mode:c; tab-width: 8; indent-tabs-mode: t; c-basic-offset: 8 -*- */
 
 /*
-  Copyright (c) 2018 Rian Hunter et. al, see AUTHORS file.
+  Copyright (c) 2018,2019 Rian Hunter et. al, see AUTHORS file.
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
@@ -127,9 +127,6 @@ int output_buf(struct SizedBuffer *sstack, const void *buf,
 #if defined(__STDC_IEC_559__) || (defined(__x86_64__) && defined(__clang__))
 #define IEC559_FLOAT_ENCODING
 #endif
-
-char *wasmjit_load_file(const char *filename, size_t *size);
-void wasmjit_unload_file(char *buf, size_t size);
 
 #define __KMAP0(to,m,...)
 #define __KMAP1(to,m,t,...) m(to,1,t)
