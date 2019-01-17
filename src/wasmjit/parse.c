@@ -76,24 +76,6 @@ uint8_t uint8_t_swap_bytes(uint8_t data)
 	return data;
 }
 
-float float_swap_bytes(float data)
-{
-	uint32_t f;
-	memcpy(&f, &data, sizeof(f));
-	f = uint32_t_swap_bytes(f);
-	memcpy(&data, &f, sizeof(f));
-	return data;
-}
-
-double double_swap_bytes(double data)
-{
-	uint64_t f;
-	memcpy(&f, &data, sizeof(f));
-	f = uint64_t_swap_bytes(f);
-	memcpy(&data, &f, sizeof(f));
-	return data;
-}
-
 #define DEFINE_INT_READER(type) \
 	int read_##type(struct ParseState *pstate, type *data)	\
 	{							\
@@ -111,14 +93,9 @@ double double_swap_bytes(double data)
 		return 1;					\
 	}
 
+DEFINE_INT_READER(uint64_t);
 DEFINE_INT_READER(uint32_t);
 DEFINE_INT_READER(uint8_t);
-
-#ifndef IEC559_FLOAT_ENCODING
-#error We dont support non-IEC 449 floats
-#endif
-DEFINE_INT_READER(float);
-DEFINE_INT_READER(double);
 
 #define DEFINE_ULEB_READER(type)					\
 	int read_uleb_##type(struct ParseState *pstate, type *data)	\
@@ -173,9 +150,6 @@ DEFINE_ULEB_READER(uint64_t);
 	}
 DEFINE_LEB_READER(uint32_t);
 DEFINE_LEB_READER(uint64_t);
-
-int read_float(struct ParseState *pstate, float *data);
-int read_double(struct ParseState *pstate, double *data);
 
 char *read_buf_internal(struct ParseState *pstate, uint32_t *buf_size,
 			int zero_term)
@@ -808,12 +782,12 @@ int read_instruction(struct ParseState *pstate, struct Instr *instr)
 			goto error;
 		break;
 	case OPCODE_F32_CONST:
-		ret = read_float(pstate, &instr->data.f32_const.value);
+		ret = read_uint32_t(pstate, &instr->data.f32_const.value);
 		if (!ret)
 			goto error;
 		break;
 	case OPCODE_F64_CONST:
-		ret = read_double(pstate, &instr->data.f64_const.value);
+		ret = read_uint64_t(pstate, &instr->data.f64_const.value);
 		if (!ret)
 			goto error;
 		break;

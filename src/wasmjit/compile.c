@@ -1671,9 +1671,6 @@ static int wasmjit_compile_instruction(const struct FuncType *func_types,
 		uint32_t bitrepr;
 		/* mov $value, %eax */
 		OUTS("\xb8");
-#ifndef	IEC559_FLOAT_ENCODING
-#error We dont support non-IEC 449 floats
-#endif
 
 		memcpy(&bitrepr, &instruction->data.f32_const.value,
 		       sizeof(uint32_t));
@@ -1692,9 +1689,6 @@ static int wasmjit_compile_instruction(const struct FuncType *func_types,
 		uint64_t bitrepr;
 		/* movq $value, %rax */
 		OUTS("\x48\xb8");
-#ifndef	IEC559_FLOAT_ENCODING
-#error We dont support non-IEC 449 floats
-#endif
 
 		memcpy(&bitrepr, &instruction->data.f64_const.value,
 		       sizeof(uint64_t));

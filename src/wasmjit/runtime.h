@@ -38,8 +38,8 @@ struct Value {
 	union ValueUnion {
 		uint32_t i32;
 		uint64_t i64;
-		float f32;
-		double f64;
+		uint32_t f32;
+		uint64_t f64;
 		struct {} null;
 	} data;
 };

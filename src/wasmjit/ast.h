@@ -365,10 +365,10 @@ struct Instr {
 			uint64_t value;
 		} i64_const;
 		struct {
-			float value;
+			uint32_t value;
 		} f32_const;
 		struct {
-			double value;
+			uint64_t value;
 		} f64_const;
 	} data;
 };
