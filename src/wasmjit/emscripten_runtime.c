@@ -110,14 +110,6 @@ enum {
 #undef ERRNO
 };
 
-#ifndef __LONG_WIDTH__
-#ifdef __LP64__
-#define __LONG_WIDTH__ 64
-#else
-#error Please define __LONG_WIDTH__
-#endif
-#endif
-
 __attribute__((unused))
 static int32_t _convert_errno(long errno_)
 {
@@ -149,20 +141,17 @@ static int32_t _convert_errno(long errno_)
 static int32_t check_ret_signed(long errno_, int issigned)
 {
 	if (!issigned) {
-#if __LONG_WIDTH__ > 32
-		if ((unsigned long) errno_ > UINT32_MAX)
+		if (sizeof(unsigned long) > sizeof(uint32_t) &&
+		    (unsigned long) errno_ > UINT32_MAX)
 			wasmjit_trap(WASMJIT_TRAP_INTEGER_OVERFLOW);
-#endif
 		return (unsigned long) errno_;
 	}
-#if __LONG_WIDTH__ > 32
-	if (errno_ < -2147483648)
+	if (sizeof(long) > sizeof(uint32_t) &&
+	    errno_ < -2147483648)
 		wasmjit_trap(WASMJIT_TRAP_INTEGER_OVERFLOW);
-#endif
-#if __LONG_WIDTH__ > 32
-	if (errno_ > INT32_MAX)
+	if (sizeof(long) > sizeof(uint32_t) &&
+	    errno_ > INT32_MAX)
 		wasmjit_trap(WASMJIT_TRAP_INTEGER_OVERFLOW);
-#endif
 	return errno_;
 }
 
@@ -171,18 +160,16 @@ static int32_t check_ret_signed(long errno_, int issigned)
 static int32_t check_ret_signed(long errno_, int issigned)
 {
 	if (!issigned) {
-#if __LONG_WIDTH__ > 32
-		if ((unsigned long) errno_ > UINT32_MAX)
+		if (sizeof(unsigned long) > sizeof(uint32_t) &&
+		    (unsigned long) errno_ > UINT32_MAX)
 			wasmjit_trap(WASMJIT_TRAP_INTEGER_OVERFLOW);
-#endif
 		return (unsigned long) errno_;
 	}
 
 	if (errno_ >= 0) {
-#if __LONG_WIDTH__ > 32
-		if (errno_ > INT32_MAX)
+		if (sizeof(long) > sizeof(uint32_t) &&
+		    errno_ > INT32_MAX)
 			wasmjit_trap(WASMJIT_TRAP_INTEGER_OVERFLOW);
-#endif
 		return errno_;
 	}
 
@@ -771,15 +758,14 @@ uint32_t wasmjit_emscripten____syscall42(uint32_t which, uint32_t varargs, struc
 	if (ret < 0)
 		return ret;
 
-#if __INT_WIDTH__ > 32
-	if (sys_pipes[0] > INT32_MAX ||
-	    sys_pipes[0] < INT32_MIN ||
-	    sys_pipes[1] > INT32_MAX ||
-	    sys_pipes[1] < INT32_MIN) {
+	if (sizeof(int) > sizeof(int32_t) &&
+	    (sys_pipes[0] > INT32_MAX ||
+	     sys_pipes[0] < INT32_MIN ||
+	     sys_pipes[1] > INT32_MAX ||
+	     sys_pipes[1] < INT32_MIN)) {
 		/* Have to abort here because we've already allocated the pipes */
 		wasmjit_emscripten_internal_abort("Pipe fds too large");
 	}
-#endif
 
 	pipes[0] = uint32_t_swap_bytes((uint32_t) sys_pipes[0]);
 	pipes[1] = uint32_t_swap_bytes((uint32_t) sys_pipes[1]);
@@ -1382,14 +1368,6 @@ uint32_t wasmjit_emscripten____syscall10(uint32_t which, uint32_t varargs,
 	return check_ret(sys_unlink(base + args.pathname));
 }
 
-#ifndef __INT_WIDTH__
-#ifdef __LP64__
-#define __INT_WIDTH__ 32
-#else
-#error Please define __INT_WIDTH__
-#endif
-#endif
-
 #if EM_IS_LINUX && !defined(__mips__)
 
 static int convert_socket_type_to_local(int32_t type)
@@ -1918,14 +1896,33 @@ static long finish_bindlike(struct FuncInst *funcinst,
 
 #endif
 
-#if __INT_WIDTH__ == 32 && defined(SAME_SOCKADDR)
+#if defined(SAME_SOCKADDR)
 
 static long finish_acceptlike(long (*acceptlike)(int, struct sockaddr *, socklen_t *),
 			      int fd, void *addr, uint32_t addrlen, void *len)
 {
-	/* socklen_t == uint32_t */
+	void *pass;
+	socklen_t tmp;
+	long toret;
 	(void) addrlen;
-	return acceptlike(fd, addr, len);
+	if (sizeof(socklen_t) == sizeof(uint32_t)) {
+		pass = len;
+	} else {
+		pass = &tmp;
+	}
+	toret = acceptlike(fd, addr, pass);
+	if (sizeof(socklen_t) != sizeof(uint32_t)) {
+		uint32_t f;
+		if (tmp > UINT32_MAX) {
+			/* NB: we have to abort here because we can't undo the sys_accept() */
+			wasmjit_emscripten_internal_abort("Failed to convert addrlen");
+		}
+		f = uint32_t_swap_bytes(tmp);
+		memcpy(len, &f, sizeof(f));
+
+	}
+	return toret;
+
 }
 
 #else
@@ -2688,11 +2685,10 @@ static long finish_getsockopt(int32_t fd,
 	switch (opttype) {
 	case OPT_TYPE_INT: {
 		int32_t v;
-#if __INT_WIDTH__ > 32
-		if (real_optval.int_ > INT32_MAX ||
-		    real_optval.int_ < INT32_MIN)
+		if (sizeof(int) > sizeof(int32_t) &&
+		    (real_optval.int_ > INT32_MAX ||
+		     real_optval.int_ < INT32_MIN))
 			wasmjit_emscripten_internal_abort("Failed to convert sockopt");
-#endif
 		v = int32_t_swap_bytes((int32_t) real_optval.int_);
 		memcpy(optval, &v, sizeof(v));
 		newlen = sizeof(v);
@@ -2700,13 +2696,12 @@ static long finish_getsockopt(int32_t fd,
 	}
 	case OPT_TYPE_LINGER: {
 		struct em_linger v;
-#if __INT_WIDTH__ > 32
-		if (real_optval.linger.l_onoff > INT32_MAX ||
-		    real_optval.linger.l_onoff < INT32_MIN ||
-		    real_optval.linger.l_linger > INT32_MAX ||
-		    real_optval.linger.l_linger < INT32_MIN)
+		if (sizeof(int) > sizeof(int32_t) &&
+		    (real_optval.linger.l_onoff > INT32_MAX ||
+		     real_optval.linger.l_onoff < INT32_MIN ||
+		     real_optval.linger.l_linger > INT32_MAX ||
+		     real_optval.linger.l_linger < INT32_MIN))
 			wasmjit_emscripten_internal_abort("Failed to convert sockopt");
-#endif
 		v.l_onoff = int32_t_swap_bytes((int32_t) real_optval.linger.l_onoff);
 		v.l_linger = int32_t_swap_bytes((int32_t) real_optval.linger.l_linger);
 		memcpy(optval, &v, sizeof(v));
@@ -2729,10 +2724,9 @@ static long finish_getsockopt(int32_t fd,
 		break;
 	}
 	case OPT_TYPE_STRING: {
-#if __INT_WIDTH__ > 32
-		if (real_optlen > UINT32_MAX)
+		if (sizeof(socklen_t) > sizeof(uint32_t) &&
+		    real_optlen > UINT32_MAX)
 			wasmjit_emscripten_internal_abort("Failed to convert sockopt");
-#endif
 		newlen = real_optlen;
 		break;
 	}
@@ -3065,10 +3059,9 @@ static long write_cmsg(char *base,
 					       src_buf_base + i * sizeof(int),
 					       sizeof(int));
 
-#if __INT_WIDTH__ > 32
-					if (srcfd > INT32_MAX)
+					if (sizeof(int) > sizeof(int32_t) &&
+					    srcfd > INT32_MAX)
 						return -1;
-#endif
 
 					destfd = srcfd;
 					destfd = int32_t_swap_bytes(destfd);
@@ -7259,15 +7252,14 @@ uint32_t wasmjit_emscripten__gettimeofday(uint32_t emtv, uint32_t emtz,
 	if (tzp) {
 		struct em_timezone emtzl;
 
-#if __INT_WIDTH__ > 32
-		if (tz.tz_minuteswest > INT32_MAX ||
-		    tz.tz_minuteswest < INT32_MIN ||
-		    tz.tz_dsttime > INT32_MAX ||
-		    tz.tz_dsttime < INT32_MIN) {
+		if (sizeof(int) > sizeof(int32_t) &&
+		    (tz.tz_minuteswest > INT32_MAX ||
+		     tz.tz_minuteswest < INT32_MIN ||
+		     tz.tz_dsttime > INT32_MAX ||
+		     tz.tz_dsttime < INT32_MIN)) {
 			rret = -EOVERFLOW;
 			goto err;
 		}
-#endif
 
 		emtzl.tz_minuteswest = int32_t_swap_bytes((int32_t) tz.tz_minuteswest);
 		emtzl.tz_dsttime = int32_t_swap_bytes((int32_t) tz.tz_dsttime);
